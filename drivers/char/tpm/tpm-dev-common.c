@@ -46,6 +46,7 @@ void tpm_common_open(struct file *file, struct tpm_chip *chip,
 		     struct file_priv *priv)
 {
 	priv->chip = chip;
+	get_device(&chip->dev);
 	mutex_init(&priv->buffer_mutex);
 	timer_setup(&priv->user_read_timer, user_reader_timeout, 0);
 	INIT_WORK(&priv->work, timeout_work);
@@ -142,8 +143,11 @@ ssize_t tpm_common_write(struct file *file, const char __user *buf,
  */
 void tpm_common_release(struct file *file, struct file_priv *priv)
 {
+	struct tpm_chip *chip = priv->chip;
+
 	del_singleshot_timer_sync(&priv->user_read_timer);
 	flush_work(&priv->work);
 	file->private_data = NULL;
 	priv->data_pending = 0;
+	put_device(&chip->dev);
 }

@@ -61,8 +61,8 @@ static int tpm_release(struct inode *inode, struct file *file)
 {
 	struct file_priv *priv = file->private_data;
 
-	tpm_common_release(file, priv);
 	clear_bit(0, &priv->chip->is_open);
+	tpm_common_release(file, priv);
 	kfree(priv);
 
 	return 0;

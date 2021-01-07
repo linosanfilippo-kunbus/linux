@@ -38,8 +38,8 @@ static int tpmrm_release(struct inode *inode, struct file *file)
 	struct file_priv *fpriv = file->private_data;
 	struct tpmrm_priv *priv = container_of(fpriv, struct tpmrm_priv, priv);
 
-	tpm_common_release(file, fpriv);
 	tpm2_del_space(fpriv->chip, &priv->space);
+	tpm_common_release(file, fpriv);
 	kfree(priv);
 
 	return 0;

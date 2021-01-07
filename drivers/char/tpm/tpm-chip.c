@@ -160,15 +160,13 @@ static void tpm_dev_release(struct device *dev)
 	kfree(chip->log.bios_event_log);
 	kfree(chip->work_space.context_buf);
 	kfree(chip->work_space.session_buf);
+	put_device(&chip->devs);
 	kfree(chip);
 }
 
 static void tpm_devs_release(struct device *dev)
 {
-	struct tpm_chip *chip = container_of(dev, struct tpm_chip, devs);
-
-	/* release the master device reference */
-	put_device(&chip->dev);
+	/* nothing */
 }
 
 /**
