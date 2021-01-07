@@ -260,6 +260,7 @@ struct tpm_chip {
 
 	/* active locality */
 	int locality;
+	bool is_alive;
 };
 
 #define to_tpm_chip(d) container_of(d, struct tpm_chip, dev)

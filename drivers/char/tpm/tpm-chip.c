@@ -55,7 +55,7 @@ int tpm_try_get_ops(struct tpm_chip *chip)
 	get_device(&chip->dev);
 
 	down_read(&chip->ops_sem);
-	if (!chip->ops)
+	if (!chip->is_alive)
 		goto out_lock;
 
 	return 0;
@@ -188,9 +188,8 @@ static int tpm_class_shutdown(struct device *dev)
 	down_write(&chip->ops_sem);
 	if (chip->flags & TPM_CHIP_FLAG_TPM2) {
 		tpm2_shutdown(chip, TPM2_SU_CLEAR);
-		chip->ops = NULL;
 	}
-	chip->ops = NULL;
+	chip->is_alive = false;
 	up_write(&chip->ops_sem);
 
 	return 0;
@@ -286,6 +285,7 @@ struct tpm_chip *tpm_chip_alloc(struct device *pdev,
 	}
 
 	chip->locality = -1;
+	chip->is_alive = true;
 	return chip;
 
 out:
@@ -369,7 +369,7 @@ static void tpm_del_char_device(struct tpm_chip *chip)
 	down_write(&chip->ops_sem);
 	if (chip->flags & TPM_CHIP_FLAG_TPM2)
 		tpm2_shutdown(chip, TPM2_SU_CLEAR);
-	chip->ops = NULL;
+	chip->is_alive = false;
 	up_write(&chip->ops_sem);
 }
 
