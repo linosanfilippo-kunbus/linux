@@ -61,7 +61,8 @@ int tpm2_init_space(struct tpm_space *space)
 void tpm2_del_space(struct tpm_chip *chip, struct tpm_space *space)
 {
 	mutex_lock(&chip->tpm_mutex);
-	tpm2_flush_sessions(chip, space);
+	if (!tpm_try_get_ops(chip))
+		tpm2_flush_sessions(chip, space);
 	mutex_unlock(&chip->tpm_mutex);
 	kfree(space->context_buf);
 	kfree(space->session_buf);
