@@ -527,6 +527,7 @@ err_proxy_dev_free:
  */
 static inline void vtpm_proxy_delete_proxy_dev(struct proxy_dev *proxy_dev)
 {
+	put_device(&proxy_dev->chip->devs);
 	put_device(&proxy_dev->chip->dev); /* frees chip */
 	kfree(proxy_dev);
 }

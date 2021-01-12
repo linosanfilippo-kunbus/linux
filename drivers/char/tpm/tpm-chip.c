@@ -250,8 +250,7 @@ struct tpm_chip *tpm_chip_alloc(struct device *pdev,
 	 * while cdevs is in use.  The corresponding put
 	 * is in the tpm_devs_release (TPM2 only)
 	 */
-	if (chip->flags & TPM_CHIP_FLAG_TPM2)
-		get_device(&chip->dev);
+	get_device(&chip->dev);
 
 	if (chip->dev_num == 0)
 		chip->dev.devt = MKDEV(MISC_MAJOR, TPM_MINOR);
@@ -317,6 +316,12 @@ struct tpm_chip *tpmm_chip_alloc(struct device *pdev,
 	rc = devm_add_action_or_reset(pdev,
 				      (void (*)(void *)) put_device,
 				      &chip->dev);
+	if (rc)
+		return ERR_PTR(rc);
+
+	rc = devm_add_action_or_reset(pdev,
+				      (void (*)(void *)) put_device,
+				      &chip->devs);
 	if (rc)
 		return ERR_PTR(rc);
 
