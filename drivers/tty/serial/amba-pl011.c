@@ -52,6 +52,8 @@
 #define SERIAL_AMBA_MINOR	64
 #define SERIAL_AMBA_NR		UART_NR
 
+#define AMBA_ISR_PASS_LIMIT	256
+
 #define UART_DR_ERROR		(UART011_DR_OE|UART011_DR_BE|UART011_DR_PE|UART011_DR_FE)
 #define UART_DUMMY_DR_RX	(1 << 16)
 
@@ -1401,38 +1403,47 @@ static irqreturn_t pl011_int(int irq, void *dev_id)
 {
 	struct uart_amba_port *uap = dev_id;
 	unsigned long flags;
-	unsigned int status;
+	unsigned int status, pass_counter = AMBA_ISR_PASS_LIMIT;
+	int handled = 0;
 
 	spin_lock_irqsave(&uap->port.lock, flags);
 	status = pl011_read(uap, REG_RIS) & uap->im;
 	if (status) {
-		check_apply_cts_event_workaround(uap);
+		do {
+			check_apply_cts_event_workaround(uap);
 
-		pl011_write(status, uap, REG_ICR);
+			pl011_write(status, uap, REG_ICR);
 
-		if (status & UART011_RXIS) {
-			uap->rx_fifo_filled = uap->fifosize >> 1;
-			if (!wake_up_process(uap->pio_rx))
-				wmb();
-		} else if (status & UART011_RTIS) {
-			if (pl011_dma_rx_running(uap))
-				pl011_dma_rx_irq(uap);
-			else
-				wake_up_process(uap->pio_rx);
-		}
-		if (status & (UART011_DSRMIS|UART011_DCDMIS|
-			      UART011_CTSMIS|UART011_RIMIS))
-			pl011_modem_status(uap);
-		if (status & UART011_TXIS) {
-			uap->tx_fifo_empty = uap->fifosize >> 1;
-			if (!wake_up_process(uap->pio_tx))
-				wmb();
-		}
+			if (status & UART011_RXIS) {
+				uap->rx_fifo_filled = uap->fifosize >> 1;
+				if (!wake_up_process(uap->pio_rx))
+					wmb();
+			} else if (status & UART011_RTIS) {
+				if (pl011_dma_rx_running(uap))
+					pl011_dma_rx_irq(uap);
+				else
+					wake_up_process(uap->pio_rx);
+			}
+			if (status & (UART011_DSRMIS|UART011_DCDMIS|
+				      UART011_CTSMIS|UART011_RIMIS))
+				pl011_modem_status(uap);
+			if (status & UART011_TXIS) {
+				uap->tx_fifo_empty = uap->fifosize >> 1;
+				if (!wake_up_process(uap->pio_tx))
+					wmb();
+			}
+
+			if (pass_counter-- == 0)
+				break;
+
+			status = pl011_read(uap, REG_RIS) & uap->im;
+		} while (status != 0);
+		handled = 1;
 	}
 
 	spin_unlock_irqrestore(&uap->port.lock, flags);
 
-	return IRQ_RETVAL(status);
+	return IRQ_RETVAL(handled);
 }
 
 static int pl011_pio_rx(void *data)
