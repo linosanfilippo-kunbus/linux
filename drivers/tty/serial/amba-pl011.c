@@ -637,7 +637,6 @@ static void pl011_dma_tx_callback(void *data)
 	    uart_circ_empty(&uap->port.state->xmit)) {
 		uap->dmatx.queued = false;
 		spin_unlock_irqrestore(&uap->port.lock, flags);
-		wake_up_process(uap->pio_tx); /* stop transmission */
 		return;
 	}
 
@@ -1485,6 +1484,7 @@ sleep_if_empty:
 		if (pl011_read(uap, REG_FR) & UART01x_FR_RXFE)
 			schedule();
 	}
+
 	return 0;
 }
 
@@ -1498,79 +1498,6 @@ static unsigned int pl011_tx_empty(struct uart_port *port)
 
 	return status & (uap->vendor->fr_busy | UART01x_FR_TXFF) ?
 							0 : TIOCSER_TEMT;
-}
-
-static int pl011_rs485_tx_start(struct uart_amba_port *uap)
-{
-	struct uart_port *port = &uap->port;
-	u32 cr;
-
-	if (!(port->rs485.flags & SER_RS485_ENABLED))
-		return 0;
-
-	cr = pl011_read(uap, REG_CR);
-	cr |= UART011_CR_TXE;		/* re-enable transmitter */
-
-	if (!(port->rs485.flags & SER_RS485_RX_DURING_TX))
-		cr &= ~UART011_CR_RXE;	/* disable receiver if half-duplex */
-
-	if (port->rs485.flags & SER_RS485_RTS_ON_SEND)
-		cr &= ~UART011_CR_RTS;
-	else
-		cr |= UART011_CR_RTS;
-
-	pl011_write(cr, uap, REG_CR);
-
-	if (port->rs485.delay_rts_before_send)
-		msleep(port->rs485.delay_rts_before_send);
-
-	return 0;
-}
-
-static int pl011_rs485_tx_stop(struct uart_amba_port *uap)
-{
-	struct uart_port *port = &uap->port;
-	struct circ_buf *xmit = &port->state->xmit;
-	unsigned long char_time =
-		(port->timeout - 20 * MSEC_PER_SEC) / uap->fifosize / 5;
-	u32 cr;
-
-	if (!(port->rs485.flags & SER_RS485_ENABLED))
-		return 0;
-
-	while (!pl011_tx_empty(port)) {
-		usleep_range(char_time, char_time + 50);
-
-		if ((!uart_circ_empty(xmit) && !uart_tx_stopped(port))
-		    || port->x_char)
-			return -EBUSY;	/* restarted while stopping */
-	}
-
-	if (port->rs485.delay_rts_after_send) {
-		long state = current->state;
-
-		msleep(port->rs485.delay_rts_after_send);
-		/* msleep() changes TASK_IDLE to TASK_RUNNING */
-		set_current_state(state);
-	}
-
-
-	if ((!uart_circ_empty(xmit) && !uart_tx_stopped(port))
-	    || port->x_char)
-		return -EBUSY;	/* restarted while stopping */
-
-	cr = pl011_read(uap, REG_CR);
-	cr &= ~UART011_CR_TXE;		/* disable transmitter */
-	cr |= UART011_CR_RXE;		/* enable receiver */
-
-	if (port->rs485.flags & SER_RS485_RTS_AFTER_SEND)
-		cr &= ~UART011_CR_RTS;
-	else
-		cr |= UART011_CR_RTS;
-
-	pl011_write(cr, uap, REG_CR);
-
-	return 0;
 }
 
 static int pl011_pio_tx(void *data)
@@ -1591,16 +1518,12 @@ static int pl011_pio_tx(void *data)
 		    && !uap->port.x_char) {
 			if (!stopped) {
 				pl011_dma_tx_stop(uap);
-				ret = pl011_rs485_tx_stop(uap);
-				if (ret) /* restarted while stopping */
-					continue;
 				stopped = true;
 			}
 			goto sleep;
 		}
 
 		if (stopped) {
-			pl011_rs485_tx_start(uap);
 			if (pl011_tx_empty(&uap->port))
 				uap->tx_fifo_empty = uap->fifosize;
 			stopped = false;
@@ -1649,9 +1572,6 @@ sleep:
 		schedule();
 	}
 
-	if (!stopped)
-		pl011_rs485_tx_stop(uap);
-
 	return 0;
 }
 
@@ -1688,17 +1608,13 @@ static void pl011_set_mctrl(struct uart_port *port, unsigned int mctrl)
 	else				\
 		cr &= ~uartbit
 
-	if (!(port->rs485.flags & SER_RS485_ENABLED)) {
-		TIOCMBIT(TIOCM_RTS, UART011_CR_RTS);
-	}
-
+	TIOCMBIT(TIOCM_RTS, UART011_CR_RTS);
 	TIOCMBIT(TIOCM_DTR, UART011_CR_DTR);
 	TIOCMBIT(TIOCM_OUT1, UART011_CR_OUT1);
 	TIOCMBIT(TIOCM_OUT2, UART011_CR_OUT2);
 	TIOCMBIT(TIOCM_LOOP, UART011_CR_LBE);
 
-	if (port->status & UPSTAT_AUTORTS &&
-	    !(port->rs485.flags & SER_RS485_ENABLED)) {
+	if (port->status & UPSTAT_AUTORTS) {
 		/* We need to disable auto-RTS if we want to turn RTS off */
 		TIOCMBIT(TIOCM_RTS, UART011_CR_RTSEN);
 	}
@@ -1952,18 +1868,7 @@ static int pl011_startup(struct uart_port *port)
 
 	/* restore RTS and DTR */
 	cr = uap->old_cr & (UART011_CR_RTS | UART011_CR_DTR);
-	cr |= UART01x_CR_UARTEN | UART011_CR_RXE;
-
-	if (port->rs485.flags & SER_RS485_ENABLED) {
-		if (port->rs485.flags & SER_RS485_RTS_AFTER_SEND)
-			cr &= ~UART011_CR_RTS;
-		else
-			cr |= UART011_CR_RTS;
-
-	} else {
-		cr |= UART011_CR_TXE;
-	}
-
+	cr |= UART01x_CR_UARTEN | UART011_CR_RXE | UART011_CR_TXE;
 	pl011_write(cr, uap, REG_CR);
 
 	spin_unlock_irq(&uap->port.lock);
@@ -2224,8 +2129,7 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
 	pl011_write(0, uap, REG_CR);
 
 	if (termios->c_cflag & CRTSCTS) {
-		if (old_cr & UART011_CR_RTS &&
-		    !(port->rs485.flags & SER_RS485_ENABLED))
+		if (old_cr & UART011_CR_RTS)
 			old_cr |= UART011_CR_RTSEN;
 
 		old_cr |= UART011_CR_CTSEN;
@@ -2339,41 +2243,6 @@ static int pl011_verify_port(struct uart_port *port, struct serial_struct *ser)
 	if (ser->baud_base < 9600)
 		ret = -EINVAL;
 	return ret;
-}
-
-static int pl011_rs485_config(struct uart_port *port,
-			      struct serial_rs485 *rs485)
-{
-	struct uart_amba_port *uap =
-		container_of(port, struct uart_amba_port, port);
-
-	/* pick sane settings if the user hasn't */
-	if (!!(rs485->flags & SER_RS485_RTS_ON_SEND) ==
-	    !!(rs485->flags & SER_RS485_RTS_AFTER_SEND)) {
-		rs485->flags |= SER_RS485_RTS_ON_SEND;
-		rs485->flags &= ~SER_RS485_RTS_AFTER_SEND;
-	}
-
-	rs485->delay_rts_before_send = min(rs485->delay_rts_before_send, 1000U);
-	rs485->delay_rts_after_send = min(rs485->delay_rts_after_send, 1000U);
-	memset(rs485->padding, 0, sizeof(rs485->padding));
-
-	port->rs485 = *rs485;
-
-	/* activate new config */
-	pl011_rs485_tx_stop(uap);
-
-	if (port->status & UPSTAT_AUTORTS &&
-	    !(port->rs485.flags & SER_RS485_ENABLED)) {
-		u32 cr = pl011_read(uap, REG_CR);
-		if (cr & UART011_CR_RTS)
-			cr |= UART011_CR_RTSEN;
-		else
-			cr &= ~UART011_CR_RTSEN;
-		pl011_write(cr, uap, REG_CR);
-	}
-
-	return 0;
 }
 
 static const struct uart_ops amba_pl011_pops = {
@@ -2867,7 +2736,6 @@ static int pl011_setup_port(struct device *dev, struct uart_amba_port *uap,
 			    struct resource *mmiobase, int index)
 {
 	void __iomem *base;
-	int ret;
 
 	base = devm_ioremap_resource(dev, mmiobase);
 	if (IS_ERR(base))
@@ -2888,10 +2756,6 @@ static int pl011_setup_port(struct device *dev, struct uart_amba_port *uap,
 	uap->port.has_sysrq = IS_ENABLED(CONFIG_SERIAL_AMBA_PL011_CONSOLE);
 	uap->port.flags = UPF_BOOT_AUTOCONF;
 	uap->port.line = index;
-
-	ret = uart_get_rs485_mode(&uap->port);
-	if (ret)
-		return ret;
 
 	amba_ports[index] = uap;
 
@@ -2950,7 +2814,6 @@ static int pl011_probe(struct amba_device *dev, const struct amba_id *id)
 	uap->port.iotype = vendor->access_32b ? UPIO_MEM32 : UPIO_MEM;
 	uap->port.irq = dev->irq[0];
 	uap->port.ops = &amba_pl011_pops;
-	uap->port.rs485_config = pl011_rs485_config;
 
 	snprintf(uap->type, sizeof(uap->type), "PL011 rev%u", amba_rev(dev));
 
