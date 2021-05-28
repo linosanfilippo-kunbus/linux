@@ -25,7 +25,6 @@
 #include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/security.h>
-#include <linux/math64.h>
 
 #include <linux/irq.h>
 #include <linux/uaccess.h>
@@ -367,7 +366,7 @@ uart_update_timeout(struct uart_port *port, unsigned int cflag,
 	 * Figure the timeout to send the above number of bits.
 	 * Add .02 seconds of slop
 	 */
-	port->timeout = div_u64(USEC_PER_SEC * bits, baud) + 20 * MSEC_PER_SEC;
+	port->timeout = (HZ * bits) / baud + HZ/50;
 }
 
 EXPORT_SYMBOL(uart_update_timeout);
@@ -1597,8 +1596,7 @@ static void uart_wait_until_sent(struct tty_struct *tty, int timeout)
 {
 	struct uart_state *state = tty->driver_data;
 	struct uart_port *port;
-	unsigned long char_time;
-	ktime_t expire;
+	unsigned long char_time, expire;
 
 	port = uart_port_ref(state);
 	if (!port)
@@ -1609,19 +1607,18 @@ static void uart_wait_until_sent(struct tty_struct *tty, int timeout)
 		return;
 	}
 
-	/* tty layer only uses jiffies resolution, but serial core uses usec */
-	timeout = jiffies_to_usecs(timeout);
-
 	/*
 	 * Set the check interval to be 1/5 of the estimated time to
-	 * send a single character.  The check interval should also be
-	 * less than the timeout.
+	 * send a single character, and make it at least 1.  The check
+	 * interval should also be less than the timeout.
 	 *
 	 * Note: we have to use pretty tight timings here to satisfy
 	 * the NIST-PCTS.
 	 */
-	char_time = (port->timeout - 20 * MSEC_PER_SEC) / port->fifosize;
+	char_time = (port->timeout - HZ/50) / port->fifosize;
 	char_time = char_time / 5;
+	if (char_time == 0)
+		char_time = 1;
 	if (timeout && timeout < char_time)
 		char_time = timeout;
 
@@ -1637,10 +1634,10 @@ static void uart_wait_until_sent(struct tty_struct *tty, int timeout)
 	if (timeout == 0 || timeout > 2 * port->timeout)
 		timeout = 2 * port->timeout;
 
-	expire = ktime_add_us(ktime_get(), timeout);
+	expire = jiffies + timeout;
 
-	pr_debug("uart_wait_until_sent(%d), now=%llu, expire=%llu...\n",
-		 port->line, ktime_to_us(ktime_get()), ktime_to_us(expire));
+	pr_debug("uart_wait_until_sent(%d), jiffies=%lu, expire=%lu...\n",
+		port->line, jiffies, expire);
 
 	/*
 	 * Check whether the transmitter is empty every 'char_time'.
@@ -1648,10 +1645,10 @@ static void uart_wait_until_sent(struct tty_struct *tty, int timeout)
 	 * we wait.
 	 */
 	while (!port->ops->tx_empty(port)) {
-		usleep_range(char_time, char_time + 50);
+		msleep_interruptible(jiffies_to_msecs(char_time));
 		if (signal_pending(current))
 			break;
-		if (ktime_after(ktime_get(), expire))
+		if (time_after(jiffies, expire))
 			break;
 	}
 	uart_port_deref(port);

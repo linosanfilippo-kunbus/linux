@@ -486,7 +486,7 @@ static int __init mux_probe(struct parisc_device *dev)
 		 * the time spent in msleep_interruptable will be very
 		 * long, causing the appearance of a console hang.
 		 */
-		port->timeout   = 20 * MSEC_PER_SEC;
+		port->timeout   = HZ / 50;
 		spin_lock_init(&port->lock);
 
 		status = uart_add_one_port(&mux_driver, port);
