@@ -317,7 +317,7 @@ struct uart_amba_port {
 	char			type[12];
 	unsigned int		fifosize;
 	bool 			rs485_tx_started;
-	unsigned long		rs485_tx_drain_interval; /* average tx queue drain time in usecs */
+	unsigned int 		rs485_tx_drain_interval; /* max tx queue drain time in usecs */
 #ifdef CONFIG_DMA_ENGINE
 	bool			using_tx_dma;
 	bool			using_rx_dma;
@@ -2120,6 +2120,7 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
 	unsigned int lcr_h, old_cr;
 	unsigned long flags;
 	unsigned int baud, quot, clkdiv;
+	unsigned int bits;
 
 	if (uap->vendor->oversampling)
 		clkdiv = 8;
@@ -2147,14 +2148,18 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
 	switch (termios->c_cflag & CSIZE) {
 	case CS5:
 		lcr_h = UART01x_LCRH_WLEN_5;
+		bits = 7;
 		break;
 	case CS6:
 		lcr_h = UART01x_LCRH_WLEN_6;
+		bits = 8;
 		break;
 	case CS7:
 		lcr_h = UART01x_LCRH_WLEN_7;
+		bits = 9;
 		break;
 	default: // CS8
+		bits = 10;
 		lcr_h = UART01x_LCRH_WLEN_8;
 		break;
 	}
@@ -2177,11 +2182,8 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
 	 */
 	uart_update_timeout(port, termios->c_cflag, baud);
 	/* Calculate the approximated maximum time it takes to drain the tx
-	   hardware queue with the given baud rate. Then use the half of this
-	   time to get the approximated time for the average case and use this
-	   as the poll interval when waiting for the queue to empty. */
-	uap->rs485_tx_drain_interval = jiffies_to_usecs(port->timeout) /
-				       uap->fifosize / 2;
+	   hardware queue with the given baud rate. */
+	uap->rs485_tx_drain_interval = (bits * 1000 * 1000) / baud;
 
 	pl011_setup_status_masks(port, termios);
 
