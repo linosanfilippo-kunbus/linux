@@ -2182,8 +2182,9 @@ pl011_set_termios(struct uart_port *port, struct ktermios *termios,
 	 */
 	uart_update_timeout(port, termios->c_cflag, baud);
 	/* Calculate the approximated maximum time it takes to drain the tx
-	   hardware queue with the given baud rate. */
-	uap->rs485_tx_drain_interval = (bits * 1000 * 1000) / baud;
+	   hardware queue with the given baud rate. Divide the result by 5 to
+	   have a smaller draining period in the best case. */
+	uap->rs485_tx_drain_interval = (bits * 1000 * 1000) / baud / 5;
 
 	pl011_setup_status_masks(port, termios);
 
