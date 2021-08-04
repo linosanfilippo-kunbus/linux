@@ -199,7 +199,12 @@
 			ksz9897: ksz9897@0 {
 				compatible = "microchip,ksz9897";
 				reg = <0>;
-				spi-max-frequency = <50000000>;
+				/*
+				 * Limit frequency to 25MHz to avoid data
+				 * corruption due to interferences with USB
+				 * signals.
+				 */
+				spi-max-frequency = <25000000>;
 				spi-cpha;
 				spi-cpol;
 				reset-gpios = <&expander_core 13 GPIO_ACTIVE_LOW>;
