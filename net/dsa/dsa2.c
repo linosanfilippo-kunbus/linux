@@ -649,6 +649,14 @@ static void dsa_tree_teardown(struct dsa_switch_tree *dst)
 	dst->setup = false;
 }
 
+void dsa_tree_shutdown(struct dsa_switch_tree *dst)
+{
+	mutex_lock(&dsa2_mutex);
+	dsa_tree_teardown(dst);
+	mutex_unlock(&dsa2_mutex);
+}
+EXPORT_SYMBOL_GPL(dsa_tree_shutdown);
+
 static struct dsa_port *dsa_port_touch(struct dsa_switch *ds, int index)
 {
 	struct dsa_switch_tree *dst = ds->dst;
