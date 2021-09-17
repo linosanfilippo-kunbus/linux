@@ -3513,9 +3513,28 @@ static int sja1105_remove(struct spi_device *spi)
 {
 	struct sja1105_private *priv = spi_get_drvdata(spi);
 
+	if (!priv)
+		return 0;
+
 	dsa_unregister_switch(priv->ds);
+
+	spi_set_drvdata(spi, NULL);
+
 	return 0;
 }
+
+static void sja1105_shutdown(struct spi_device *spi)
+{
+	struct sja1105_private *priv = spi_get_drvdata(spi);
+
+	if (!priv)
+		return;
+
+	dsa_switch_shutdown(priv->ds);
+
+	spi_set_drvdata(spi, NULL);
+}
+
 
 static const struct of_device_id sja1105_dt_ids[] = {
 	{ .compatible = "nxp,sja1105e", .data = &sja1105e_info },
@@ -3536,6 +3555,7 @@ static struct spi_driver sja1105_driver = {
 	},
 	.probe  = sja1105_probe,
 	.remove = sja1105_remove,
+	.shutdown = sja1105_shutdown,
 };
 
 module_spi_driver(sja1105_driver);
