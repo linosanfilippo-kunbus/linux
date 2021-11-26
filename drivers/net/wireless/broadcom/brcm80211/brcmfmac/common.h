@@ -50,7 +50,6 @@ struct brcmf_mp_device {
 	bool		ignore_probe_fail;
 	struct brcmfmac_pd_cc *country_codes;
 	const char	*board_type;
-	u8		mac_addr[ETH_ALEN];
 	union {
 		struct brcmfmac_sdio_pd sdio;
 	} bus;
