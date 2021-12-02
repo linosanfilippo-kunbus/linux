@@ -740,7 +740,7 @@ static inline void gpiod_unexport(struct gpio_desc *desc)
 
 #endif /* CONFIG_GPIOLIB && CONFIG_GPIO_SYSFS */
 
-#ifdef CONFIG_PREEMPT_RT_FULL
+#ifdef CONFIG_PREEMPT_RT
 #define gpiod_get_value_cansleep_rt gpiod_get_value_cansleep
 #define gpiod_set_value_cansleep_rt gpiod_set_value_cansleep
 #else
