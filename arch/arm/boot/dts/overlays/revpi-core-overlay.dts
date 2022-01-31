@@ -178,6 +178,22 @@
 		};
 	};
 
+	fragment@7 {
+		target-path = "/";
+		__overlay__ {
+			compatible = "kunbus,revpi-core", "brcm,bcm2837",
+				     "brcm,bcm2836", "brcm,bcm2835";
+			revpi_core {
+				compatible = "revpi,core";
+
+				sniff-gpios = <&gpio 42 GPIO_ACTIVE_HIGH>,
+					      <&gpio 28 GPIO_ACTIVE_HIGH>,
+					      <&gpio 43 GPIO_ACTIVE_HIGH>,
+					      <&gpio 29 GPIO_ACTIVE_HIGH>;
+			};
+		};
+	};
+
 	__overrides__ {
 		eth0_mac_hi = <&eth0>,"local-mac-address:0";
 		eth0_mac_lo = <&eth0>,"local-mac-address;4";
