@@ -403,18 +403,25 @@ static void pl011_dma_probe(struct uart_amba_port *uap)
 	/* DMA is the sole user of the platform data right now */
 	struct amba_pl011_data *plat = dev_get_platdata(uap->port.dev);
 	struct device *dev = uap->port.dev;
-	struct dma_slave_config tx_conf = {
-		.dst_addr = uap->port.mapbase +
-				 pl011_reg_to_offset(uap, REG_DR),
-		.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE,
-		.direction = DMA_MEM_TO_DEV,
-		.dst_maxburst = uap->fifosize >> 1,
-		.device_fc = false,
-	};
+	struct dma_slave_config tx_conf; 
 	struct dma_chan *chan;
 	dma_cap_mask_t mask;
 
+	tx_conf.dst_addr = uap->port.mapbase +
+				 pl011_reg_to_offset(uap, REG_DR);
+	// XXX: translate from phys to bus address. Use dma-ranges property
+	// for this?
+	tx_conf.dst_addr -= 0x80000000;
+
+	printk(KERN_INFO "DST ADDR IS 0x%08x\n", (u32) tx_conf.dst_addr);
+
+	tx_conf.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
+	tx_conf.direction = DMA_MEM_TO_DEV;
+	tx_conf.dst_maxburst = uap->fifosize >> 1;
+	tx_conf.device_fc = false;
+
 	uap->dma_probed = true;
+
 	chan = dma_request_chan(dev, "tx");
 	if (IS_ERR(chan)) {
 		if (PTR_ERR(chan) == -EPROBE_DEFER) {
@@ -552,6 +559,8 @@ static void pl011_dma_tx_callback(void *data)
 	struct pl011_dmatx_data *dmatx = &uap->dmatx;
 	unsigned long flags;
 	u16 dmacr;
+
+	trace_printk("DMA TX CALLBACK\n");
 
 	spin_lock_irqsave(&uap->port.lock, flags);
 	if (uap->dmatx.queued)
@@ -1357,8 +1366,11 @@ static void pl011_start_tx(struct uart_port *port)
 	struct uart_amba_port *uap =
 	    container_of(port, struct uart_amba_port, port);
 
-	if (!pl011_dma_tx_start(uap))
+	if (!pl011_dma_tx_start(uap)) {
+		trace_printk("Using PIO instead of DMA\n");
 		pl011_start_tx_pio(uap);
+	} else
+		trace_printk("Using DMA !!!\n");
 }
 
 static void pl011_stop_rx(struct uart_port *port)
@@ -1896,6 +1908,9 @@ static int pl011_startup(struct uart_port *port)
 
 	/* Startup DMA */
 	pl011_dma_startup(uap);
+
+	trace_printk("%s TX DMA\n", uap->using_tx_dma ? "USING " : "NOT USING ");
+	trace_printk("%s RX DMA\n", uap->using_rx_dma ? "USING " : "NOT USING ");
 
 	pl011_enable_interrupts(uap);
 
@@ -2797,7 +2812,9 @@ static int pl011_setup_port(struct device *dev, struct uart_amba_port *uap,
 
 	uap->port.dev = dev;
 	uap->port.mapbase = mmiobase->start;
+	trace_printk("MAPBASE IS 0x%08x\n", (u32) mmiobase->start);
 	uap->port.membase = base;
+	trace_printk("MEMBASE IS 0x%08x\n", (u32) base);
 	uap->port.fifosize = uap->fifosize;
 	uap->port.has_sysrq = IS_ENABLED(CONFIG_SERIAL_AMBA_PL011_CONSOLE);
 	uap->port.flags = UPF_BOOT_AUTOCONF;
