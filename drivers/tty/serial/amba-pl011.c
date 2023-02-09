@@ -277,6 +277,7 @@ struct uart_amba_port {
 };
 
 static unsigned int pl011_tx_empty(struct uart_port *port);
+static void pl011_rs485_tx_start(struct uart_amba_port *uap);
 
 static unsigned int pl011_reg_to_offset(const struct uart_amba_port *uap,
 	unsigned int reg)
@@ -682,6 +683,10 @@ static int pl011_dma_tx_refill(struct uart_amba_port *uap)
 	/* Fire the DMA transaction */
 	dma_dev->device_issue_pending(chan);
 
+	if ((uap->port.rs485.flags & SER_RS485_ENABLED) &&
+	    !uap->rs485_tx_started)
+		pl011_rs485_tx_start(uap);
+
 	uap->dmacr |= UART011_TXDMAE;
 	pl011_write(uap->dmacr, uap, REG_DMACR);
 	uap->dmatx.queued = true;
@@ -797,6 +802,10 @@ static inline bool pl011_dma_tx_start(struct uart_amba_port *uap)
 		 */
 		return false;
 	}
+
+	if ((uap->port.rs485.flags & SER_RS485_ENABLED) &&
+	    !uap->rs485_tx_started)
+		pl011_rs485_tx_start(uap);
 
 	pl011_write(uap->port.x_char, uap, REG_DR);
 	uap->port.icount.tx++;
