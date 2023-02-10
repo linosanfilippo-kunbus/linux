@@ -649,6 +649,15 @@ static void bcm2835_dma_fill_cb_chain_with_sg(
 					cb->cb->length <<= 16;
 					cb->cb->length |= buswidth;
 				}
+
+				trace_printk("DMA: DUMP CB\n");
+				trace_printk("DMA: CB INFO: 0x%08x\n", cb->cb->info);
+				trace_printk("DMA: CB src: 0x%08x\n", cb->cb->src);
+				trace_printk("DMA: CB dst: 0x%08x\n", cb->cb->dst);
+				trace_printk("DMA: CB length: 0x%08x\n", cb->cb->length);
+				trace_printk("DMA: CB stride: 0x%08x\n", cb->cb->stride);
+				trace_printk("DMA: CB next: 0x%08x\n", cb->cb->next);
+				trace_printk("DMA: DUMP CB END\n");
 			}
 		}
 	}
