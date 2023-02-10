@@ -277,7 +277,9 @@ struct uart_amba_port {
 };
 
 static unsigned int pl011_tx_empty(struct uart_port *port);
+static void dump_buffer(unsigned char *buff, unsigned int len);
 static void pl011_rs485_tx_start(struct uart_amba_port *uap);
+
 
 static unsigned int pl011_reg_to_offset(const struct uart_amba_port *uap,
 	unsigned int reg)
@@ -598,6 +600,16 @@ static void pl011_dma_tx_callback(void *data)
 	spin_unlock_irqrestore(&uap->port.lock, flags);
 }
 
+static void dump_buffer(unsigned char *buff, unsigned int len)
+{
+	int i;
+
+	for (i = 0; i < len; i++)
+		trace_printk("0x%02x (%c) ", buff[i], buff[i]);
+
+	trace_printk("\n");
+}
+
 /*
  * Try to refill the TX DMA buffer.
  * Locking: called with port lock held and IRQs disabled.
@@ -637,9 +649,12 @@ static int pl011_dma_tx_refill(struct uart_amba_port *uap)
 	if (count > PL011_DMA_BUFFER_SIZE)
 		count = PL011_DMA_BUFFER_SIZE;
 
-	if (xmit->tail < xmit->head)
+	if (xmit->tail < xmit->head) {
 		memcpy(&dmatx->buf[0], &xmit->buf[xmit->tail], count);
-	else {
+		trace_printk("Dumping DMA buffer (1)\n");
+		dump_buffer(dmatx->buf, count);
+		trace_printk("Dumping DMA buffer (1) END\n");
+	} else {
 		size_t first = UART_XMIT_SIZE - xmit->tail;
 		size_t second;
 
@@ -648,8 +663,17 @@ static int pl011_dma_tx_refill(struct uart_amba_port *uap)
 		second = count - first;
 
 		memcpy(&dmatx->buf[0], &xmit->buf[xmit->tail], first);
-		if (second)
+
+		trace_printk("Dumping DMA buffer (2a)\n");
+		dump_buffer(dmatx->buf, first);
+		trace_printk("Dumping DMA buffer (2a) END\n");
+
+		if (second) {
 			memcpy(&dmatx->buf[first], &xmit->buf[0], second);
+			trace_printk("Dumping DMA buffer (2b)\n");
+			dump_buffer(&dmatx->buf[first], second);
+			trace_printk("Dumping DMA buffer (2b) END\n");
+		}
 	}
 
 	dmatx->sg.length = count;
@@ -1453,6 +1477,7 @@ static bool pl011_tx_char(struct uart_amba_port *uap, unsigned char c,
 	    pl011_read(uap, REG_FR) & UART01x_FR_TXFF)
 		return false; /* unable to transmit character */
 
+	trace_printk("PIO - 0x%02x (%c) ", c, c);
 	pl011_write(c, uap, REG_DR);
 	uap->port.icount.tx++;
 
