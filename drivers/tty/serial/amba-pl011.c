@@ -1993,9 +1993,9 @@ static void pl011_shutdown(struct uart_port *port)
 	if ((port->rs485.flags & SER_RS485_ENABLED) && uap->rs485_tx_started)
 		pl011_rs485_tx_stop(uap);
 
-	kthread_stop(uap->pio_tx);
-
 	free_irq(uap->port.irq, uap);
+
+	kthread_stop(uap->pio_tx);
 
 	pl011_disable_uart(uap);
 
