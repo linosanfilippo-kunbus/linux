@@ -1499,10 +1499,6 @@ static int serial_omap_probe_rs485(struct uart_omap_port *up,
 	int ret;
 
 	rs485conf->flags = 0;
-	up->rts_gpiod = NULL;
-
-	if (!np)
-		return 0;
 
 	ret = uart_get_rs485_mode(&up->port);
 	if (ret)
@@ -1612,10 +1608,6 @@ static int serial_omap_probe(struct platform_device *pdev)
 		dev_info(up->port.dev, "no wakeirq for uart%d\n",
 			 up->port.line);
 
-	ret = serial_omap_probe_rs485(up, &pdev->dev);
-	if (ret < 0)
-		goto err_rs485;
-
 	sprintf(up->name, "OMAP UART%d", up->port.line);
 	up->port.mapbase = mem->start;
 	up->port.membase = base;
@@ -1629,6 +1621,10 @@ static int serial_omap_probe(struct platform_device *pdev)
 			 "No clock speed specified: using default: %d\n",
 			 DEFAULT_CLK_SPEED);
 	}
+
+	ret = serial_omap_probe_rs485(up, &pdev->dev);
+	if (ret < 0)
+		goto err_rs485;
 
 	up->latency = PM_QOS_CPU_LATENCY_DEFAULT_VALUE;
 	up->calc_latency = PM_QOS_CPU_LATENCY_DEFAULT_VALUE;
