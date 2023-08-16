@@ -1397,14 +1397,16 @@ static void uart_sanitize_serial_rs485(struct uart_port *port, struct serial_rs4
 	memset(rs485->padding1, 0, sizeof(rs485->padding1));
 }
 
-static void uart_set_rs485_termination(struct uart_port *port,
-				       const struct serial_rs485 *rs485)
+static void uart_set_rs485_gpios(struct uart_port *port,
+				 const struct serial_rs485 *rs485)
 {
 	if (!(rs485->flags & SER_RS485_ENABLED))
 		return;
 
 	gpiod_set_value_cansleep(port->rs485_term_gpio,
 				 !!(rs485->flags & SER_RS485_TERMINATE_BUS));
+	gpiod_set_value_cansleep(port->rs485_rx_during_tx_gpio,
+				 !!(rs485->flags & SER_RS485_RX_DURING_TX));
 }
 
 static int uart_rs485_config(struct uart_port *port)
@@ -1454,7 +1456,7 @@ static int uart_set_rs485_config(struct tty_struct *tty, struct uart_port *port,
 	if (ret)
 		return ret;
 	uart_sanitize_serial_rs485(port, &rs485);
-	uart_set_rs485_termination(port, &rs485);
+	uart_set_rs485_gpios(port, &rs485);
 
 	spin_lock_irqsave(&port->lock, flags);
 	ret = port->rs485_config(port, &tty->termios, &rs485);
@@ -2480,8 +2482,7 @@ int uart_resume_port(struct uart_driver *drv, struct uart_port *uport)
 				if (tty)
 					uart_change_line_settings(tty, state, NULL);
 
-				uart_set_rs485_termination(uport,
-							   &uport->rs485);
+				uart_set_rs485_gpios(uport, &uport->rs485);
 				spin_lock_irq(&uport->lock);
 				if (!(uport->rs485.flags & SER_RS485_ENABLED))
 					ops->set_mctrl(uport, uport->mctrl);
@@ -2585,7 +2586,7 @@ uart_configure_port(struct uart_driver *drv, struct uart_state *state,
 
 		/* Power up port for set_mctrl() */
 		uart_change_pm(state, UART_PM_STATE_ON);
-		uart_set_rs485_termination(port, &port->rs485);
+		uart_set_rs485_gpios(port, &port->rs485);
 
 		/*
 		 * Ensure that the modem control lines are de-activated.
